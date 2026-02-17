@@ -5,26 +5,26 @@ const id = props.id ?? `inputbtn-${Math.random().toString(36).slice(2)}`;
 const placeholder = props.placeholder ?? 'Digite...';
 const buttonText = props.buttonText ?? 'Enviar';
 const cities = [
-  'Londres, Inglaterra',
-  'Nova York, EUA',
-  'Paris, França',
-  'Tóquio, Japão',
-  'Madri, Espanha',
-  'Singapura',
-  'Roma, Itália',
-  'Dubai, Emirados Árabes Unidos',
-  'Berlim, Alemanha',
-  'Barcelona, Espanha',
-  'Sydney, Austrália',
-  'Los Angeles, EUA',
-  'Seul, Coréia do Sul',
-  'Amsterdã, Países Baixos',
-  'Pequim, China',
-  'Shangai, China',
-  'Toronto, Canadá',
-  'São Paulo, Brasil',
-  'Hong Kong, China',
-  'Istambul, Turquia'
+  { name: 'Londres, Inglaterra', lat: 51.5074, lon: -0.1278 },
+  { name: 'Nova York, EUA', lat: 40.7128, lon: -74.0060 },
+  { name: 'Paris, França', lat: 48.8566, lon: 2.3522 },
+  { name: 'Tóquio, Japão', lat: 35.6895, lon: 139.6917 },
+  { name: 'Madri, Espanha', lat: 40.4168, lon: -3.7038 },
+  { name: 'Singapura', lat: 1.3521, lon: 103.8198 },
+  { name: 'Roma, Itália', lat: 41.9028, lon: 12.4964 },
+  { name: 'Dubai, Emirados Árabes Unidos', lat: 25.2048, lon: 55.2708 },
+  { name: 'Berlim, Alemanha', lat: 52.52, lon: 13.4050 },
+  { name: 'Barcelona, Espanha', lat: 41.3851, lon: 2.1734 },
+  { name: 'Sydney, Austrália', lat: -33.8688, lon: 151.2093 },
+  { name: 'Los Angeles, EUA', lat: 34.0522, lon: -118.2437 },
+  { name: 'Seul, Coréia do Sul', lat: 37.5665, lon: 126.9780 },
+  { name: 'Amsterdã, Países Baixos', lat: 52.3676, lon: 4.9041 },
+  { name: 'Pequim, China', lat: 39.9042, lon: 116.4074 },
+  { name: 'Shangai, China', lat: 31.2304, lon: 121.4737 },
+  { name: 'Toronto, Canadá', lat: 43.6532, lon: -79.3832 },
+  { name: 'São Paulo, Brasil', lat: -23.5505, lon: -46.6333 },
+  { name: 'Hong Kong, China', lat: 22.3193, lon: 114.1694 },
+  { name: 'Istambul, Turquia', lat: 41.0082, lon: 28.9784 }
 ];
 ---
 
@@ -40,6 +40,7 @@ const cities = [
   />
   <button id={`${id}-btn`} type="button">{buttonText}</button>
   <ul id={`${id}-list`} class="suggestions" role="listbox" hidden></ul>
+  <div id={`${id}-result`} class="input-result" aria-live="polite"></div>
 </div>
 
 
@@ -53,6 +54,68 @@ const cities = [
   const list = root.querySelector('ul.suggestions');
   const btn = root.querySelector('button');
   const citiesList = JSON.parse(root.getAttribute('data-cities') || '[]');
+  const resultEl = root.querySelector('.input-result');
+
+  // WMO weather interpretation codes mapping (from Open-Meteo/WMO)
+  const weatherCodeMap = {
+    0: 'Clear sky',
+    1: 'Mainly clear',
+    2: 'Partly cloudy',
+    3: 'Overcast',
+    45: 'Fog',
+    48: 'Depositing rime fog',
+    51: 'Light drizzle',
+    53: 'Moderate drizzle',
+    55: 'Dense drizzle',
+    56: 'Light freezing drizzle',
+    57: 'Dense freezing drizzle',
+    61: 'Slight rain',
+    63: 'Moderate rain',
+    65: 'Heavy rain',
+    66: 'Light freezing rain',
+    67: 'Heavy freezing rain',
+    71: 'Slight snow fall',
+    73: 'Moderate snow fall',
+    75: 'Heavy snow fall',
+    77: 'Snow grains',
+    80: 'Slight rain showers',
+    81: 'Moderate rain showers',
+    82: 'Violent rain showers',
+    85: 'Slight snow showers',
+    86: 'Heavy snow showers',
+    95: 'Thunderstorm',
+    96: 'Thunderstorm with slight hail',
+    99: 'Thunderstorm with heavy hail'
+  };
+
+  // Keep last fetched weather (in Celsius) to allow unit conversion
+  let lastWeather = null; // { city, tempC, code, desc }
+  let currentUnit = 'C';
+
+  function toF(c) { return (c * 9/5) + 32; }
+
+  function formatTemp(t) { return Math.round(t * 10) / 10; }
+
+  function renderResult(unit = currentUnit) {
+    if (!lastWeather) return;
+    const { city, tempC, code, desc } = lastWeather;
+    let displayTemp = tempC;
+    let unitSymbol = '°C';
+    if (unit === 'F') {
+      displayTemp = toF(tempC);
+      unitSymbol = '°F';
+    }
+    const tempStr = `${formatTemp(displayTemp)}${unitSymbol}`;
+    resultEl.textContent = `${city}: ${tempStr} — ${desc} (code ${code})`;
+    root.dispatchEvent(new CustomEvent('inputbutton:weather', { detail: { city, temperature: formatTemp(displayTemp), unit: unitSymbol, weathercode: code, description: desc } }));
+  }
+
+  // Listen for unit changes
+  document.addEventListener('tempunit:change', (e) => {
+    const newUnit = e?.detail?.unit ?? 'C';
+    currentUnit = newUnit;
+    renderResult(currentUnit);
+  });
 
   let filtered = [];
   let activeIndex = -1;
@@ -66,7 +129,7 @@ const cities = [
     }
     filtered.forEach((c, i) => {
       const li = document.createElement('li');
-      li.textContent = c;
+      li.textContent = c.name;
       li.setAttribute('role', 'option');
       li.id = `${root.id}-opt-${i}`;
       li.tabIndex = -1;
@@ -79,7 +142,7 @@ const cities = [
   }
 
   function selectItem(i) {
-    input.value = filtered[i];
+    input.value = filtered[i].name;
     list.hidden = true;
     input.setAttribute('aria-expanded', 'false');
     activeIndex = -1;
@@ -90,7 +153,7 @@ const cities = [
     if (!v) {
       filtered = [];
     } else {
-      filtered = citiesList.filter(c => c.toLowerCase().startsWith(v));
+      filtered = citiesList.filter(c => c.name.toLowerCase().startsWith(v));
     }
     renderList();
   });
@@ -129,9 +192,36 @@ const cities = [
     }
   });
 
-  btn.addEventListener('click', () => {
-    // Emissão de evento customizado com o valor atual
-    const event = new CustomEvent('inputbutton:submit', { detail: { value: input.value } });
-    root.dispatchEvent(event);
+  btn.addEventListener('click', async () => {
+    const value = input.value.trim();
+    // Emit event always with the raw value
+    root.dispatchEvent(new CustomEvent('inputbutton:submit', { detail: { value } }));
+
+    // Find city object
+    const match = citiesList.find(c => c.name.toLowerCase() === value.toLowerCase());
+    if (!match) {
+      resultEl.textContent = 'Please select a valid city from suggestions.';
+      return;
+    }
+
+    resultEl.textContent = 'Loading...';
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(match.lat)}&longitude=${encodeURIComponent(match.lon)}&current_weather=true&temperature_unit=celsius`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const temp = data?.current_weather?.temperature;
+      const code = data?.current_weather?.weathercode;
+      const desc = weatherCodeMap[code] ?? 'Unknown';
+      if (typeof temp === 'number') {
+        // store in Celsius, render according to currentUnit
+        lastWeather = { city: match.name, tempC: temp, code, desc };
+        renderResult(currentUnit);
+      } else {
+        resultEl.textContent = 'Temperature data not available.';
+      }
+    } catch (err) {
+      resultEl.textContent = `Error fetching weather: ${err.message}`;
+    }
   });
 </script>

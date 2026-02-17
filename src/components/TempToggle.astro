@@ -1,0 +1,27 @@
+---
+import '../styles/TempToggle.scss';
+const props = Astro.props ?? {};
+const id = props.id ?? `temptoggle-${Math.random().toString(36).slice(2)}`;
+const initial = props.initial ?? 'C';
+---
+
+<div class="temp-toggle" id={id} role="tablist" aria-label="Temperature unit">
+  <button class={`toggle-btn ${initial === 'C' ? 'active' : ''}`} data-unit="C">°C</button>
+  <button class={`toggle-btn ${initial === 'F' ? 'active' : ''}`} data-unit="F">°F</button>
+</div>
+
+<script type="module">
+  const scriptEl = document.currentScript;
+  const root = (scriptEl && scriptEl.previousElementSibling && scriptEl.previousElementSibling.classList && scriptEl.previousElementSibling.classList.contains('temp-toggle'))
+    ? scriptEl.previousElementSibling
+    : document.querySelector('.temp-toggle');
+  const buttons = Array.from(root.querySelectorAll('.toggle-btn'));
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      root.dispatchEvent(new CustomEvent('tempunit:change', { detail: { unit: btn.dataset.unit }, bubbles: true, composed: true }));
+    });
+  });
+</script>
