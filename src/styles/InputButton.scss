@@ -1,0 +1,48 @@
+.input-button {
+  position: relative;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+}
+.input-button input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+.input-button button {
+  padding: 0.5rem 0.9rem;
+  border: none;
+  background: #0b74de;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.suggestions {
+  list-style: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0.25rem 0;
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  max-height: 200px;
+  overflow: auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  z-index: 50;
+}
+.suggestions li {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+.suggestions li[aria-selected="true"],
+.suggestions li:hover {
+  background: #f0f6ff;
+}

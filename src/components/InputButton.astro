@@ -1,0 +1,137 @@
+---
+import '../styles/InputButton.scss';
+const props = Astro.props ?? {};
+const id = props.id ?? `inputbtn-${Math.random().toString(36).slice(2)}`;
+const placeholder = props.placeholder ?? 'Digite...';
+const buttonText = props.buttonText ?? 'Enviar';
+const cities = [
+  'Londres, Inglaterra',
+  'Nova York, EUA',
+  'Paris, França',
+  'Tóquio, Japão',
+  'Madri, Espanha',
+  'Singapura',
+  'Roma, Itália',
+  'Dubai, Emirados Árabes Unidos',
+  'Berlim, Alemanha',
+  'Barcelona, Espanha',
+  'Sydney, Austrália',
+  'Los Angeles, EUA',
+  'Seul, Coréia do Sul',
+  'Amsterdã, Países Baixos',
+  'Pequim, China',
+  'Shangai, China',
+  'Toronto, Canadá',
+  'São Paulo, Brasil',
+  'Hong Kong, China',
+  'Istambul, Turquia'
+];
+---
+
+<div class="input-button" data-cities={JSON.stringify(cities)} id={id}>
+  <input
+    id={`${id}-input`}
+    type="text"
+    placeholder={placeholder}
+    aria-autocomplete="list"
+    aria-controls={`${id}-list`}
+    aria-expanded="false"
+    autocomplete="off"
+  />
+  <button id={`${id}-btn`} type="button">{buttonText}</button>
+  <ul id={`${id}-list`} class="suggestions" role="listbox" hidden></ul>
+</div>
+
+
+<script type="module">
+  // Client-side behavior
+  const scriptEl = document.currentScript;
+  const root = (scriptEl && scriptEl.previousElementSibling && scriptEl.previousElementSibling.classList && scriptEl.previousElementSibling.classList.contains('input-button'))
+    ? scriptEl.previousElementSibling
+    : document.querySelector('.input-button[data-cities]');
+  const input = root.querySelector('input');
+  const list = root.querySelector('ul.suggestions');
+  const btn = root.querySelector('button');
+  const citiesList = JSON.parse(root.getAttribute('data-cities') || '[]');
+
+  let filtered = [];
+  let activeIndex = -1;
+
+  function renderList() {
+    list.innerHTML = '';
+    if (!filtered.length) {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    filtered.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.textContent = c;
+      li.setAttribute('role', 'option');
+      li.id = `${root.id}-opt-${i}`;
+      li.tabIndex = -1;
+      li.addEventListener('click', () => selectItem(i));
+      list.appendChild(li);
+    });
+    activeIndex = -1;
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+
+  function selectItem(i) {
+    input.value = filtered[i];
+    list.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    activeIndex = -1;
+  }
+
+  input.addEventListener('input', (e) => {
+    const v = e.target.value.trim().toLowerCase();
+    if (!v) {
+      filtered = [];
+    } else {
+      filtered = citiesList.filter(c => c.toLowerCase().startsWith(v));
+    }
+    renderList();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (list.hidden) return;
+    const items = Array.from(list.children);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      updateActive(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      updateActive(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0) selectItem(activeIndex);
+    } else if (e.key === 'Escape') {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  function updateActive(items) {
+    items.forEach((it, idx) => {
+      it.setAttribute('aria-selected', String(idx === activeIndex));
+    });
+    if (activeIndex >= 0) items[activeIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!root.contains(e.target)) {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  btn.addEventListener('click', () => {
+    // Emissão de evento customizado com o valor atual
+    const event = new CustomEvent('inputbutton:submit', { detail: { value: input.value } });
+    root.dispatchEvent(event);
+  });
+</script>

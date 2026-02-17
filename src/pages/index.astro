@@ -1,4 +1,5 @@
 ---
+import InputButton from '../components/InputButton.astro';
 
 ---
 
@@ -9,9 +10,10 @@
 		<link rel="icon" href="/favicon.ico" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
+		<title>Weather app</title>
 	</head>
 	<body>
-		<h1>Astro</h1>
+		<h1>Weather app</h1>
+		<InputButton placeholder="Digite a cidade" buttonText="Buscar" />
 	</body>
 </html>
