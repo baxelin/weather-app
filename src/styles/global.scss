@@ -63,3 +63,39 @@ button {
 input {
   font-family: inherit;
 }
+
+.app-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 0 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  max-width: 560px;
+  margin: 0 auto;
+  background: transparent;
+  border: none;
+}
+
+.app-footer strong {
+  color: var(--color-text);
+}
+
+.footer-icons {
+  display: flex;
+  gap: 16px;
+}
+
+.footer-icons a {
+  color: var(--color-text-secondary);
+  font-size: 1.6rem;
+  transition:
+    color 0.2s,
+    transform 0.15s;
+}
+
+.footer-icons a:hover {
+  color: var(--color-accent);
+  transform: scale(1.15);
+}
