@@ -1,227 +1,402 @@
 ---
 import '../styles/InputButton.scss';
+
 const props = Astro.props ?? {};
 const id = props.id ?? `inputbtn-${Math.random().toString(36).slice(2)}`;
-const placeholder = props.placeholder ?? 'Digite...';
-const buttonText = props.buttonText ?? 'Enviar';
-const cities = [
-  { name: 'Londres, Inglaterra', lat: 51.5074, lon: -0.1278 },
-  { name: 'Nova York, EUA', lat: 40.7128, lon: -74.0060 },
-  { name: 'Paris, França', lat: 48.8566, lon: 2.3522 },
-  { name: 'Tóquio, Japão', lat: 35.6895, lon: 139.6917 },
-  { name: 'Madri, Espanha', lat: 40.4168, lon: -3.7038 },
-  { name: 'Singapura', lat: 1.3521, lon: 103.8198 },
-  { name: 'Roma, Itália', lat: 41.9028, lon: 12.4964 },
-  { name: 'Dubai, Emirados Árabes Unidos', lat: 25.2048, lon: 55.2708 },
-  { name: 'Berlim, Alemanha', lat: 52.52, lon: 13.4050 },
-  { name: 'Barcelona, Espanha', lat: 41.3851, lon: 2.1734 },
-  { name: 'Sydney, Austrália', lat: -33.8688, lon: 151.2093 },
-  { name: 'Los Angeles, EUA', lat: 34.0522, lon: -118.2437 },
-  { name: 'Seul, Coréia do Sul', lat: 37.5665, lon: 126.9780 },
-  { name: 'Amsterdã, Países Baixos', lat: 52.3676, lon: 4.9041 },
-  { name: 'Pequim, China', lat: 39.9042, lon: 116.4074 },
-  { name: 'Shangai, China', lat: 31.2304, lon: 121.4737 },
-  { name: 'Toronto, Canadá', lat: 43.6532, lon: -79.3832 },
-  { name: 'São Paulo, Brasil', lat: -23.5505, lon: -46.6333 },
-  { name: 'Hong Kong, China', lat: 22.3193, lon: 114.1694 },
-  { name: 'Istambul, Turquia', lat: 41.0082, lon: 28.9784 }
-];
+const placeholder = props.placeholder ?? 'Search city…';
+const buttonText = props.buttonText ?? 'Search';
 ---
 
-<div class="input-button" data-cities={JSON.stringify(cities)} id={id}>
-  <input
-    id={`${id}-input`}
-    type="text"
-    placeholder={placeholder}
-    aria-autocomplete="list"
-    aria-controls={`${id}-list`}
-    aria-expanded="false"
-    autocomplete="off"
-  />
-  <button id={`${id}-btn`} type="button">{buttonText}</button>
-  <ul id={`${id}-list`} class="suggestions" role="listbox" hidden></ul>
+<div class="input-button" id={id}>
+  <div class="input-row">
+    <input
+      id={`${id}-input`}
+      type="text"
+      placeholder={placeholder}
+      aria-autocomplete="list"
+      aria-controls={`${id}-list`}
+      aria-expanded="false"
+      autocomplete="off"
+    />
+    <button class="geo-btn" type="button" title="Use my location" aria-label="Use my location">📍</button>
+    <button id={`${id}-btn`} class="search-btn" type="button">{buttonText}</button>
+    <ul id={`${id}-list`} class="suggestions" role="listbox" hidden></ul>
+  </div>
   <div id={`${id}-result`} class="input-result" aria-live="polite"></div>
 </div>
 
 
-<script type="module">
-  // Client-side behavior
-  const scriptEl = document.currentScript;
-  const root = (scriptEl && scriptEl.previousElementSibling && scriptEl.previousElementSibling.classList && scriptEl.previousElementSibling.classList.contains('input-button'))
-    ? scriptEl.previousElementSibling
-    : document.querySelector('.input-button[data-cities]');
-  const input = root.querySelector('input');
-  const list = root.querySelector('ul.suggestions');
-  const btn = root.querySelector('button');
-  const citiesList = JSON.parse(root.getAttribute('data-cities') || '[]');
-  const resultEl = root.querySelector('.input-result');
+<script>
+  // ── Imports ─────────────────────────────────────────────────────────────
+  import { defaultCities } from '../lib/constants/cities.js';
+  import { DEBOUNCE_DELAY, MAX_LOCAL_SUGGESTIONS, MAX_SUGGESTIONS, ERROR_DISPLAY_DURATION } from '../lib/constants/config.js';
+  import { getWeatherIcon, getWeatherDescription, isAlertCode } from '../lib/constants/weather-codes.js';
+  import { WeatherService } from '../lib/services/WeatherService.js';
+  import { GeocodingService } from '../lib/services/GeocodingService.js';
+  import { FavoritesStore } from '../lib/stores/FavoritesStore.js';
+  import { HistoryStore } from '../lib/stores/HistoryStore.js';
+  import { formatTemp, convertTemp, unitSymbol } from '../lib/utils/temperature.js';
+  import { formatTime } from '../lib/utils/time.js';
 
-  // WMO weather interpretation codes mapping (from Open-Meteo/WMO)
-  const weatherCodeMap = {
-    0: 'Clear sky',
-    1: 'Mainly clear',
-    2: 'Partly cloudy',
-    3: 'Overcast',
-    45: 'Fog',
-    48: 'Depositing rime fog',
-    51: 'Light drizzle',
-    53: 'Moderate drizzle',
-    55: 'Dense drizzle',
-    56: 'Light freezing drizzle',
-    57: 'Dense freezing drizzle',
-    61: 'Slight rain',
-    63: 'Moderate rain',
-    65: 'Heavy rain',
-    66: 'Light freezing rain',
-    67: 'Heavy freezing rain',
-    71: 'Slight snow fall',
-    73: 'Moderate snow fall',
-    75: 'Heavy snow fall',
-    77: 'Snow grains',
-    80: 'Slight rain showers',
-    81: 'Moderate rain showers',
-    82: 'Violent rain showers',
-    85: 'Slight snow showers',
-    86: 'Heavy snow showers',
-    95: 'Thunderstorm',
-    96: 'Thunderstorm with slight hail',
-    99: 'Thunderstorm with heavy hail'
-  };
+  // ── DOM references ──────────────────────────────────────────────────────
+  const root     = document.querySelector('.input-button') as HTMLElement;
+  const input    = root.querySelector('input') as HTMLInputElement;
+  const list     = root.querySelector('ul.suggestions') as HTMLUListElement;
+  const btn      = root.querySelector('.search-btn') as HTMLButtonElement;
+  const geoBtn   = root.querySelector('.geo-btn') as HTMLButtonElement;
+  const resultEl = root.querySelector('.input-result') as HTMLElement;
 
-  // Keep last fetched weather (in Celsius) to allow unit conversion
-  let lastWeather = null; // { city, tempC, code, desc }
-  let currentUnit = 'C';
+  // ── State ───────────────────────────────────────────────────────────────
+  let lastWeather: Record<string, any> | null = null;
+  let currentUnit: 'C' | 'F' = 'C';
+  let suggestions: Array<Record<string, any>> = [];
+  let activeIndex = -1;
+  let selectedSuggestion: Record<string, any> | null = null;
+  let geocodeTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  function toF(c) { return (c * 9/5) + 32; }
+  // ── Rendering: result card ──────────────────────────────────────────────
+  const DETAIL_LABELS = ['Humidity', 'Wind', 'Feels like', 'UV Index', 'Sunrise', 'Sunset'];
 
-  function formatTemp(t) { return Math.round(t * 10) / 10; }
-
-  function renderResult(unit = currentUnit) {
-    if (!lastWeather) return;
-    const { city, tempC, code, desc } = lastWeather;
-    let displayTemp = tempC;
-    let unitSymbol = '°C';
-    if (unit === 'F') {
-      displayTemp = toF(tempC);
-      unitSymbol = '°F';
-    }
-    const tempStr = `${formatTemp(displayTemp)}${unitSymbol}`;
-    resultEl.textContent = `${city}: ${tempStr} — ${desc} (code ${code})`;
-    root.dispatchEvent(new CustomEvent('inputbutton:weather', { detail: { city, temperature: formatTemp(displayTemp), unit: unitSymbol, weathercode: code, description: desc } }));
+  function renderPlaceholder() {
+    resultEl.innerHTML = `
+      <div class="input-result-card placeholder">
+        <div class="result-top">
+          <span class="input-icon ph-muted">—</span>
+          <div class="input-result-main">
+            <div class="input-city ph-muted">———————</div>
+            <div class="input-temp ph-muted">--°</div>
+            <div class="input-condition ph-muted">Search for a city above</div>
+          </div>
+        </div>
+        <div class="result-details">
+          ${DETAIL_LABELS.map(l =>
+            `<div class="detail-chip">
+              <span class="detail-chip-label">${l}</span>
+              <span class="detail-chip-value ph-muted">——</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
   }
 
-  // Listen for unit changes
-  document.addEventListener('tempunit:change', (e) => {
-    const newUnit = e?.detail?.unit ?? 'C';
-    currentUnit = newUnit;
-    renderResult(currentUnit);
-  });
+  function buildDetailChips(weather: Record<string, any>, unit: 'C' | 'F') {
+    const sym = unitSymbol(unit);
+    const apparentTemp = convertTemp(weather.apparent_tempC ?? weather.tempC, unit);
 
-  let filtered = [];
-  let activeIndex = -1;
+    const details = [
+      { icon: '💧', label: 'Humidity',   value: `${weather.humidity ?? '--'}%` },
+      { icon: '💨', label: 'Wind',       value: `${weather.windspeed != null ? Math.round(weather.windspeed) : '--'} km/h` },
+      { icon: '🌡️', label: 'Feels like', value: `${formatTemp(apparentTemp)}${sym}` },
+      { icon: '☀️', label: 'UV Index',   value: weather.uv_index != null ? String(Math.round(weather.uv_index * 10) / 10) : '--' },
+      { icon: '🌅', label: 'Sunrise',    value: formatTime(weather.sunrise) },
+      { icon: '🌇', label: 'Sunset',     value: formatTime(weather.sunset) },
+    ];
 
-  function renderList() {
-    list.innerHTML = '';
-    if (!filtered.length) {
-      list.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-      return;
+    return details.map(d => `
+      <div class="detail-chip">
+        <span class="detail-chip-icon">${d.icon}</span>
+        <span class="detail-chip-label">${d.label}</span>
+        <span class="detail-chip-value">${d.value}</span>
+      </div>`).join('');
+  }
+
+  function renderResult(unit: 'C' | 'F' = currentUnit) {
+    if (!lastWeather) { renderPlaceholder(); return; }
+
+    const { city, tempC, code, desc, lat, lon } = lastWeather;
+    const displayTemp = convertTemp(tempC, unit);
+    const sym         = unitSymbol(unit);
+    const icon        = getWeatherIcon(code);
+    const isFav       = FavoritesStore.isFavorite(city);
+    const hasAlert    = isAlertCode(code);
+
+    const alertHtml = hasAlert
+      ? `<div class="weather-alert">${code >= 95 ? '⛈️ Thunderstorm in progress' : '🌧️ Heavy rain'}</div>`
+      : '';
+
+    const safeCity = JSON.stringify({ name: city, lat, lon }).replace(/'/g, '&apos;');
+
+    resultEl.innerHTML = `
+      <div class="input-result-card${hasAlert ? ' has-alert' : ''}">
+        ${alertHtml}
+        <div class="result-top">
+          <span class="input-icon" title="${desc}">${icon}</span>
+          <div class="input-result-main">
+            <div class="city-row">
+              <div class="input-city">${city}</div>
+              <button class="fav-btn${isFav ? ' active' : ''}"
+                title="${isFav ? 'Remove from favorites' : 'Add to favorites'}"
+                data-city='${safeCity}'>${isFav ? '★' : '☆'}</button>
+            </div>
+            <div class="input-temp">${formatTemp(displayTemp)}${sym}</div>
+            <div class="input-condition">${desc}</div>
+          </div>
+        </div>
+        <div class="result-details">${buildDetailChips(lastWeather, unit)}</div>
+      </div>`;
+
+    // Wire favorite button
+    const favBtn = resultEl.querySelector('.fav-btn');
+    if (favBtn) {
+      favBtn.addEventListener('click', () => {
+        try {
+          FavoritesStore.toggle(JSON.parse((favBtn as HTMLElement).dataset.city!));
+          renderFavorites();
+          renderResult(currentUnit);
+        } catch { /* invalid data */ }
+      });
     }
-    filtered.forEach((c, i) => {
+
+    // Dispatch upstream event for sibling components
+    root.dispatchEvent(new CustomEvent('inputbutton:weather', {
+      detail: { city, temperature: formatTemp(displayTemp), unit: sym, weathercode: code, description: desc, lat, lon },
+      bubbles: true, composed: true,
+    }));
+
+    // Show / clear inline error
+    renderError();
+  }
+
+  function renderError() {
+    const message = resultEl.dataset.error || '';
+    const existing = resultEl.querySelector('.input-error');
+    if (message) {
+      if (existing) { existing.textContent = message; }
+      else {
+        const el = document.createElement('div');
+        el.className = 'input-error';
+        el.textContent = message;
+        resultEl.appendChild(el);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+
+  // ── Rendering: favorites chips ──────────────────────────────────────────
+  let favsEl = root.querySelector('.input-favorites') as HTMLElement | null;
+  if (!favsEl) {
+    favsEl = document.createElement('div');
+    favsEl.className = 'input-favorites';
+    root.appendChild(favsEl);
+  }
+
+  function renderFavorites() {
+    const favs = FavoritesStore.getAll();
+    if (!favs.length) { favsEl!.innerHTML = ''; return; }
+
+    favsEl!.innerHTML = `
+      <div class="fav-label">⭐ Favorites</div>
+      <div class="fav-chips">
+        ${favs.map(f => `<button class="fav-chip" data-city='${JSON.stringify(f).replace(/'/g, "&apos;")}'>${f.name.split(',')[0]}</button>`).join('')}
+      </div>`;
+
+    favsEl!.querySelectorAll('.fav-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        try {
+          const city = JSON.parse((chip as HTMLElement).dataset.city!);
+          input.value = city.name;
+          selectedSuggestion = city;
+          btn.click();
+        } catch { /* invalid data */ }
+      });
+    });
+  }
+
+  // ── Autocomplete: suggestion list ───────────────────────────────────────
+  function renderSuggestionList() {
+    list.innerHTML = '';
+    if (!suggestions.length) { closeSuggestions(); return; }
+
+    suggestions.forEach((city, i) => {
       const li = document.createElement('li');
-      li.textContent = c.name;
+      li.textContent = city.name + (city.source === 'geo' ? ` — ${city.country || ''}` : '');
       li.setAttribute('role', 'option');
       li.id = `${root.id}-opt-${i}`;
       li.tabIndex = -1;
-      li.addEventListener('click', () => selectItem(i));
+      li.addEventListener('click', () => selectSuggestion(i));
       list.appendChild(li);
     });
+
     activeIndex = -1;
+    openSuggestions();
+  }
+
+  function showHistory() {
+    const history = HistoryStore.getAll();
+    if (!history.length) { closeSuggestions(); return; }
+
+    list.innerHTML =
+      `<li class="suggestions-header">🕐 Recent</li>` +
+      history.map((c, i) => `<li role="option" tabindex="-1" data-hist-idx="${i}">${c.name.split(',')[0]}</li>`).join('');
+
+    list.querySelectorAll('[data-hist-idx]').forEach(li => {
+      li.addEventListener('click', () => {
+        const city = history[Number((li as HTMLElement).dataset.histIdx)];
+        input.value = city.name;
+        selectedSuggestion = city;
+        closeSuggestions();
+      });
+    });
+
+    openSuggestions();
+  }
+
+  function selectSuggestion(index: number) {
+    const item = suggestions[index];
+    if (!item) return;
+    input.value = item.name;
+    selectedSuggestion = item;
+    closeSuggestions();
+    activeIndex = -1;
+  }
+
+  function openSuggestions() {
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
   }
 
-  function selectItem(i) {
-    input.value = filtered[i].name;
+  function closeSuggestions() {
     list.hidden = true;
     input.setAttribute('aria-expanded', 'false');
-    activeIndex = -1;
   }
 
+  function updateActiveItem(items: HTMLElement[]) {
+    items.forEach((it, idx) => it.setAttribute('aria-selected', String(idx === activeIndex)));
+    if (activeIndex >= 0) items[activeIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  // ── Event listeners ─────────────────────────────────────────────────────
+  input.addEventListener('focus', () => { if (!input.value.trim()) showHistory(); });
+
   input.addEventListener('input', (e) => {
-    const v = e.target.value.trim().toLowerCase();
-    if (!v) {
-      filtered = [];
-    } else {
-      filtered = citiesList.filter(c => c.name.toLowerCase().startsWith(v));
-    }
-    renderList();
+    const rawValue = (e.target as HTMLInputElement).value.trim();
+    const lowerValue = rawValue.toLowerCase();
+    selectedSuggestion = null;
+
+    if (!lowerValue) { suggestions = []; showHistory(); return; }
+
+    // Local matches first
+    const localMatches = defaultCities
+      .filter(c => c.name.toLowerCase().startsWith(lowerValue))
+      .map(c => ({ name: c.name, lat: c.lat, lon: c.lon, source: 'local' }));
+    suggestions = localMatches.slice(0, MAX_LOCAL_SUGGESTIONS);
+    renderSuggestionList();
+
+    // Debounced geocoding for remote results
+    if (geocodeTimeout) clearTimeout(geocodeTimeout);
+    geocodeTimeout = setTimeout(async () => {
+      const geoResults = await GeocodingService.searchCities(rawValue);
+      const merged = [...suggestions];
+      geoResults.forEach(g => {
+        const isDuplicate = merged.some(m => (m.lat === g.lat && m.lon === g.lon) || m.name.toLowerCase() === g.name.toLowerCase());
+        if (!isDuplicate) merged.push(g);
+      });
+      suggestions = merged.slice(0, MAX_SUGGESTIONS);
+      renderSuggestionList();
+    }, DEBOUNCE_DELAY);
   });
 
   input.addEventListener('keydown', (e) => {
     if (list.hidden) return;
-    const items = Array.from(list.children);
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, items.length - 1);
-      updateActive(items);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      updateActive(items);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeIndex >= 0) selectItem(activeIndex);
-    } else if (e.key === 'Escape') {
-      list.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
+    const items = Array.from(list.querySelectorAll('li:not(.suggestions-header)')) as HTMLElement[];
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        updateActiveItem(items);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        updateActiveItem(items);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (activeIndex >= 0) selectSuggestion(activeIndex);
+        break;
+      case 'Escape':
+        closeSuggestions();
+        break;
     }
   });
-
-  function updateActive(items) {
-    items.forEach((it, idx) => {
-      it.setAttribute('aria-selected', String(idx === activeIndex));
-    });
-    if (activeIndex >= 0) items[activeIndex].scrollIntoView({ block: 'nearest' });
-  }
 
   document.addEventListener('click', (e) => {
-    if (!root.contains(e.target)) {
-      list.hidden = true;
-      input.setAttribute('aria-expanded', 'false');
-    }
+    if (!root.contains(e.target as Node)) closeSuggestions();
   });
+
+  // ── Unit change listener ────────────────────────────────────────────────
+  document.addEventListener('tempunit:change', (e: Event) => {
+    currentUnit = (e as CustomEvent).detail?.unit ?? 'C';
+    renderResult(currentUnit);
+  });
+
+  // ── Geolocation button ─────────────────────────────────────────────────
+  if (geoBtn) {
+    geoBtn.addEventListener('click', async () => {
+      geoBtn.disabled = true;
+      geoBtn.textContent = '⏳';
+
+      try {
+        const coords = await GeocodingService.getCurrentPosition();
+        const location = await GeocodingService.reverseGeocode(coords.latitude, coords.longitude);
+        input.value = location.name;
+        selectedSuggestion = location;
+        btn.click();
+      } catch {
+        // Geolocation denied or failed — silently reset
+      } finally {
+        geoBtn.disabled = false;
+        geoBtn.textContent = '📍';
+      }
+    });
+  }
+
+  // ── Main search handler ─────────────────────────────────────────────────
+  function resolveCity(value: string): { name: string; lat: number; lon: number } | null {
+    const lower = value.toLowerCase();
+
+    if (selectedSuggestion && selectedSuggestion.name.toLowerCase() === lower) {
+      return selectedSuggestion as { name: string; lat: number; lon: number };
+    }
+    return suggestions.find(s => s.name.toLowerCase() === lower) as { name: string; lat: number; lon: number }
+        || defaultCities.find(c => c.name.toLowerCase() === lower)
+        || null;
+  }
+
+  function showTemporaryError(message: string) {
+    resultEl.dataset.error = message;
+    renderResult(currentUnit);
+    setTimeout(() => { delete resultEl.dataset.error; renderResult(currentUnit); }, ERROR_DISPLAY_DURATION);
+  }
 
   btn.addEventListener('click', async () => {
     const value = input.value.trim();
-    // Emit event always with the raw value
     root.dispatchEvent(new CustomEvent('inputbutton:submit', { detail: { value } }));
 
-    // Find city object
-    const match = citiesList.find(c => c.name.toLowerCase() === value.toLowerCase());
+    const match = resolveCity(value);
     if (!match) {
-      resultEl.textContent = 'Please select a valid city from suggestions.';
+      showTemporaryError('Please select a valid city from the suggestions.');
       return;
     }
 
-    resultEl.textContent = 'Loading...';
+    // Show cached data immediately (stale-while-revalidate)
+    const cached = WeatherService.getCachedCurrent(match.lat, match.lon);
+    if (cached) { lastWeather = cached; renderResult(currentUnit); }
+
+    delete resultEl.dataset.error;
+
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(match.lat)}&longitude=${encodeURIComponent(match.lon)}&current_weather=true&temperature_unit=celsius`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const temp = data?.current_weather?.temperature;
-      const code = data?.current_weather?.weathercode;
-      const desc = weatherCodeMap[code] ?? 'Unknown';
-      if (typeof temp === 'number') {
-        // store in Celsius, render according to currentUnit
-        lastWeather = { city: match.name, tempC: temp, code, desc };
-        renderResult(currentUnit);
-      } else {
-        resultEl.textContent = 'Temperature data not available.';
-      }
-    } catch (err) {
-      resultEl.textContent = `Error fetching weather: ${err.message}`;
+      lastWeather = await WeatherService.fetchCurrent(match);
+      HistoryStore.add({ name: match.name, lat: match.lat, lon: match.lon });
+      renderResult(currentUnit);
+    } catch (err: any) {
+      resultEl.dataset.error = `Error loading: ${err.message}`;
+      renderResult(currentUnit);
     }
   });
+
+  // ── Initialization ──────────────────────────────────────────────────────
+  renderResult();
+  renderFavorites();
 </script>

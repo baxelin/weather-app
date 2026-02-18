@@ -1,0 +1,155 @@
+---
+import '../styles/HourlyForecast.scss';
+
+const props = Astro.props ?? {};
+const id = props.id ?? `hourly-${Math.random().toString(36).slice(2)}`;
+---
+
+<div class="hourly-forecast" id={id} aria-live="polite">
+  <div class="hf-header">Next 12 hours</div>
+  <div class="hf-list" role="list"></div>
+</div>
+
+<script>
+  // ── Imports ─────────────────────────────────────────────────────────────
+  import { getWeatherDescription, getWeatherIcon } from '../lib/constants/weather-codes.js';
+  import { HOURLY_SLOTS } from '../lib/constants/config.js';
+  import { WeatherService } from '../lib/services/WeatherService.js';
+  import { formatTemp, convertTemp, unitSymbol } from '../lib/utils/temperature.js';
+  import { hourLabel } from '../lib/utils/time.js';
+
+  // ── DOM references ──────────────────────────────────────────────────────
+  const root   = document.querySelector('.hourly-forecast') as HTMLElement;
+  const listEl = root.querySelector('.hf-list') as HTMLElement;
+
+  // ── State ───────────────────────────────────────────────────────────────
+  let lastHourly: Array<{ time: string; tempC: number; code: number; precip: number }> | null = null;
+  let currentUnit: 'C' | 'F' = 'C';
+
+  // ── Rendering ───────────────────────────────────────────────────────────
+  function renderPlaceholders() {
+    listEl.innerHTML = '';
+
+    const now = new Date();
+    const startHour = new Date(now);
+    const needsRoundUp = now.getMinutes() > 0 || now.getSeconds() > 0 || now.getMilliseconds() > 0;
+    if (needsRoundUp) startHour.setHours(now.getHours() + 1, 0, 0, 0);
+    else startHour.setMinutes(0, 0, 0);
+
+    for (let i = 0; i < HOURLY_SLOTS; i++) {
+      const dt = new Date(startHour);
+      dt.setHours(startHour.getHours() + i);
+      const el = document.createElement('div');
+      el.className = 'hf-item placeholder';
+      el.innerHTML = `
+        <div class="hf-hour ph-muted">--</div>
+        <div class="hf-temp ph-muted">--°</div>
+        <div class="hf-icon ph-muted">—</div>
+        <div class="hf-rain-wrap"><div class="hf-rain-bar" style="width:0%"></div></div>`;
+      listEl.appendChild(el);
+    }
+  }
+
+  function renderHourlyItems(unit: 'C' | 'F') {
+    listEl.innerHTML = '';
+
+    lastHourly!.forEach(item => {
+      const el   = document.createElement('div');
+      el.className = 'hf-item';
+
+      const hour   = hourLabel(item.time);
+      const temp   = convertTemp(item.tempC, unit);
+      const sym    = unitSymbol(unit);
+      const desc   = getWeatherDescription(item.code);
+      const icon   = getWeatherIcon(item.code);
+      const iconHtml = icon ? `<div class="hf-icon" title="${desc}">${icon}</div>` : '';
+
+      const precipMm  = item.precip ?? 0;
+      const rainPct   = Math.min(100, Math.round(precipMm / 5 * 100));
+      const rainTitle = precipMm > 0 ? `${precipMm.toFixed(1)}mm rain` : 'No rain';
+
+      el.innerHTML =
+        `<div class="hf-hour">${hour}</div>` +
+        `<div class="hf-temp">${formatTemp(temp)}${sym}</div>` +
+        `${iconHtml}` +
+        `<div class="hf-rain-wrap" title="${rainTitle}"><div class="hf-rain-bar" style="width:${rainPct}%"></div></div>`;
+      listEl.appendChild(el);
+    });
+  }
+
+  function render(unit: 'C' | 'F' = currentUnit) {
+    if (!lastHourly || !lastHourly.length) {
+      renderPlaceholders();
+      return;
+    }
+    renderHourlyItems(unit);
+  }
+
+  // ── Data fetching ───────────────────────────────────────────────────────
+  async function fetchHourly(lat: number, lon: number) {
+    // Show cached data immediately (stale-while-revalidate)
+    const cached = WeatherService.getCachedHourly(lat, lon);
+    if (cached) {
+      lastHourly = cached;
+      render(currentUnit);
+    }
+
+    try {
+      lastHourly = await WeatherService.fetchHourly(lat, lon);
+      render(currentUnit);
+    } catch (err: any) {
+      const errEl = document.createElement('div');
+      errEl.className = 'hf-error';
+      errEl.textContent = `Error loading hourly: ${err.message}`;
+      listEl.appendChild(errEl);
+    }
+  }
+
+  // ── Event listeners ─────────────────────────────────────────────────────
+  document.addEventListener('inputbutton:weather', (e: Event) => {
+    const detail = (e as CustomEvent).detail || {};
+    if (detail.lat == null || detail.lon == null) return;
+    fetchHourly(detail.lat, detail.lon);
+  });
+
+  document.addEventListener('tempunit:change', (e: Event) => {
+    currentUnit = (e as CustomEvent).detail?.unit ?? 'C';
+    render(currentUnit);
+  });
+
+  // ── Drag-to-scroll (desktop) ────────────────────────────────────────────
+  let isDragging = false;
+  let dragStartX = 0;
+  let scrollStartX = 0;
+
+  listEl.addEventListener('mousedown', (e: MouseEvent) => {
+    isDragging = true;
+    dragStartX = e.clientX;
+    scrollStartX = listEl.scrollLeft;
+    listEl.style.cursor = 'grabbing';
+    listEl.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!isDragging) return;
+    listEl.scrollLeft = scrollStartX - (e.clientX - dragStartX);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    listEl.style.cursor = '';
+    listEl.style.userSelect = '';
+  });
+
+  // Convert vertical scroll to horizontal on desktop
+  listEl.addEventListener('wheel', (e: WheelEvent) => {
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    listEl.scrollLeft += e.deltaY;
+  }, { passive: false });
+
+  // ── Initialization ──────────────────────────────────────────────────────
+  render();
+</script>

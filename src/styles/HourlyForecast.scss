@@ -1,0 +1,123 @@
+// ── Hourly forecast card ─────────────────────────────────────────────────────
+.hourly-forecast {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  // Do NOT set overflow: hidden here — it clips the horizontal scroll.
+  // Padding is handled individually per child.
+  padding: 20px 20px 0;
+}
+
+.hf-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  margin-bottom: 14px;
+}
+
+// Extend list edge-to-edge inside the card so scroll reaches the corners.
+// Negative margin cancels the parent padding; inner padding keeps items readable.
+.hf-list {
+  display: flex;
+  gap: 6px;
+  // Stretch edge-to-edge within the card
+  margin-left: -20px;
+  margin-right: -20px;
+  padding: 0 20px 20px;
+  // Horizontal scroll
+  overflow-x: auto;
+  overflow-y: visible;
+  // Hide scrollbar visually but keep it functional
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  // Smooth momentum scroll on iOS
+  -webkit-overflow-scrolling: touch;
+}
+
+.hf-item {
+  flex: 0 0 auto; // never shrink, never grow
+  width: 64px;
+  padding: 12px 6px;
+  background: #f2f2f7;
+  border-radius: 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  &:hover {
+    background: #e5e5ea;
+  }
+}
+
+.hf-item.placeholder {
+  .hf-hour,
+  .hf-temp {
+    color: #c7c7cc;
+  }
+  .hf-icon {
+    color: #c7c7cc;
+  }
+}
+
+.hf-hour {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.hf-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.hf-temp {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.hf-desc {
+  display: none;
+}
+
+// ── Precipitation bar ─────────────────────────────────────────────────────────
+.hf-rain-wrap {
+  width: 100%;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.hf-rain-bar {
+  height: 100%;
+  background: #007aff;
+  border-radius: 2px;
+  min-width: 0;
+  transition: width 0.3s ease;
+}
+
+// ── Item skeleton state ───────────────────────────────────────────────────────
+.hf-item.placeholder {
+  gap: 7px;
+  justify-content: center;
+}
+
+.hf-error {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 8px 12px 20px;
+  font-size: 0.8rem;
+  color: #ff3b30;
+}

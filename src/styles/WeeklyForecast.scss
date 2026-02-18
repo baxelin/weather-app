@@ -1,0 +1,96 @@
+// ── Weekly forecast card ─────────────────────────────────────────────────────
+.weekly-forecast {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.wf-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.wf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wf-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--color-border);
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.wf-item.placeholder {
+  .wf-day,
+  .wf-icon {
+    color: #d1d1d6;
+  }
+  .wf-max,
+  .wf-min {
+    color: #d1d1d6;
+  }
+}
+
+.wf-day {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wf-icon {
+  font-size: 1.4rem;
+  text-align: center;
+  line-height: 1;
+}
+
+.wf-max {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.wf-min {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+// Temps wrapper – groups max and min temperature
+.wf-temps {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wf-desc {
+  display: none;
+}
+
+.wf-loading {
+  padding: 12px 0;
+  font-size: 0.8rem;
+  color: var(--color-accent);
+}
+
+.wf-error {
+  padding: 12px 0;
+  font-size: 0.8rem;
+  color: #ff3b30;
+}

@@ -1,0 +1,117 @@
+---
+import '../styles/WeeklyForecast.scss';
+
+const props = Astro.props ?? {};
+const id = props.id ?? `weekly-${Math.random().toString(36).slice(2)}`;
+---
+
+<div class="weekly-forecast" id={id} aria-live="polite">
+  <div class="wf-header">Next 7 days</div>
+  <div class="wf-list" role="list"></div>
+</div>
+
+<script>
+  // ── Imports ─────────────────────────────────────────────────────────────
+  import { getWeatherDescription, getWeatherIcon } from '../lib/constants/weather-codes.js';
+  import { WEEKLY_SLOTS } from '../lib/constants/config.js';
+  import { WeatherService } from '../lib/services/WeatherService.js';
+  import { formatTemp, convertTemp, unitSymbol } from '../lib/utils/temperature.js';
+  import { dayLabel } from '../lib/utils/time.js';
+
+  // ── DOM references ──────────────────────────────────────────────────────
+  const root   = document.querySelector('.weekly-forecast') as HTMLElement;
+  const listEl = root.querySelector('.wf-list') as HTMLElement;
+
+  // ── State ───────────────────────────────────────────────────────────────
+  let lastWeekly: Array<{ date: string; maxC: number; minC: number; code: number }> | null = null;
+  let currentUnit: 'C' | 'F' = 'C';
+
+  // ── Rendering ───────────────────────────────────────────────────────────
+  function renderPlaceholders() {
+    listEl.innerHTML = '';
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 1);
+
+    for (let i = 0; i < WEEKLY_SLOTS; i++) {
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + i);
+      const label = dayLabel(dt.toISOString());
+      const el = document.createElement('div');
+      el.className = 'wf-item placeholder';
+      el.innerHTML =
+        `<div class="wf-day">${label}</div>` +
+        `<div class="wf-icon">—</div>` +
+        `<div class="wf-temps"><span class="wf-max">--°</span><span class="wf-min">--°</span></div>`;
+      listEl.appendChild(el);
+    }
+  }
+
+  function renderWeeklyItems(unit: 'C' | 'F') {
+    listEl.innerHTML = '';
+
+    lastWeekly!.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'wf-item';
+
+      const maxTemp = convertTemp(item.maxC, unit);
+      const minTemp = convertTemp(item.minC, unit);
+      const sym     = unitSymbol(unit);
+      const desc    = getWeatherDescription(item.code);
+      const icon    = getWeatherIcon(item.code);
+      const iconHtml = icon
+        ? `<div class="wf-icon" title="${desc}">${icon}</div>`
+        : '<div class="wf-icon">—</div>';
+
+      el.innerHTML =
+        `<div class="wf-day">${dayLabel(item.date)}</div>` +
+        `${iconHtml}` +
+        `<div class="wf-temps"><span class="wf-max">${formatTemp(maxTemp)}${sym}</span><span class="wf-min">${formatTemp(minTemp)}${sym}</span></div>`;
+      listEl.appendChild(el);
+    });
+  }
+
+  function render(unit: 'C' | 'F' = currentUnit) {
+    if (!lastWeekly || !lastWeekly.length) {
+      renderPlaceholders();
+      return;
+    }
+    renderWeeklyItems(unit);
+  }
+
+  // ── Data fetching ───────────────────────────────────────────────────────
+  async function fetchWeekly(lat: number, lon: number) {
+    // Show cached data immediately (stale-while-revalidate)
+    const cached = WeatherService.getCachedWeekly(lat, lon);
+    if (cached) {
+      lastWeekly = cached;
+      render(currentUnit);
+    }
+
+    try {
+      lastWeekly = await WeatherService.fetchWeekly(lat, lon);
+      render(currentUnit);
+    } catch (err: any) {
+      const errEl = document.createElement('div');
+      errEl.className = 'wf-error';
+      errEl.textContent = `Error loading weekly: ${err.message}`;
+      listEl.appendChild(errEl);
+    }
+  }
+
+  // ── Event listeners ─────────────────────────────────────────────────────
+  document.addEventListener('inputbutton:weather', (e: Event) => {
+    const detail = (e as CustomEvent).detail || {};
+    if (detail.lat == null || detail.lon == null) return;
+    fetchWeekly(detail.lat, detail.lon);
+  });
+
+  document.addEventListener('tempunit:change', (e: Event) => {
+    currentUnit = (e as CustomEvent).detail?.unit ?? 'C';
+    render(currentUnit);
+  });
+
+  // ── Initialization ──────────────────────────────────────────────────────
+  render();
+</script>

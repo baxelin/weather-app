@@ -1,19 +1,33 @@
+// ── Segmented temperature toggle ─────────────────────────────────────────────
 .temp-toggle {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  display: inline-flex;
+  background: #e4e4eb;
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
 }
+
 .toggle-btn {
-  padding: 0.35rem 0.6rem;
-  border: 1px solid #cfd8e3;
-  background: #f7f9fc;
-  color: #0b2f5a;
-  border-radius: 6px;
-  cursor: pointer;
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 7px;
+  font-size: 0.85rem;
   font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    color 0.18s,
+    box-shadow 0.18s;
+
+  &:hover {
+    color: var(--color-text);
+  }
 }
+
 .toggle-btn.active {
-  background: #0b74de;
-  color: white;
-  border-color: #0b74de;
+  background: var(--color-card);
+  color: var(--color-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
